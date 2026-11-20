@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leonida Ledger — GTA VI trophy guide &amp; tracker</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="sky" aria-hidden="true"></div>
+<header class="masthead">
+  <div class="brand">
+    <p class="eyebrow">Vice City · 2026 · offline</p>
+    <h1>Leonida <span>Ledger</span></h1>
+    <p class="tagline">Every one of the 55 trophies, the road to the platinum, and the sources behind each claim.</p>
+  </div>
+  <div class="stat-strip" id="stat-strip">
+    <div class="stat"><b id="stat-trophies">55</b><span>trophies</span></div>
+    <div class="stat"><b id="stat-cited">—</b><span>cited steps</span></div>
+    <div class="stat"><b id="stat-sources">—</b><span>sources</span></div>
+    <div class="stat"><b id="stat-earned">0</b><span>earned</span></div>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs" role="tablist">
+  <button type="button" role="tab" data-view="tracker" class="active">Tracker</button>
+  <button type="button" role="tab" data-view="roadmap">Roadmap</button>
+  <button type="button" role="tab" data-view="sources">Sources</button>
+</nav>
+
+<main>
+<section id="view-tracker" class="view">
+  <div class="progress-wrap">
+    <div class="progress-head">
+      <p id="progress-line"><b>0</b> of 55 earned</p>
+      <p id="progress-pct">0%</p>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    <ul class="grade-counts" id="grade-counts"></ul>
+  </div>
+
+  <div class="filters">
+    <label class="field search">
+      <span>Search</span>
+      <input id="filter-text" type="search" placeholder="name, mission, district" autocomplete="off">
+    </label>
+    <label class="field">
+      <span>Grade</span>
+      <select id="filter-grade">
+        <option value="all">All grades</option>
+        <option value="platinum">Platinum</option>
+        <option value="gold">Gold</option>
+        <option value="silver">Silver</option>
+        <option value="bronze">Bronze</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Kind</span>
+      <select id="filter-kind">
+        <option value="all">All kinds</option>
+        <option value="story">Story</option>
+        <option value="collectible">Collectibles</option>
+        <option value="activity">Activities</option>
+        <option value="stranger">Strangers</option>
+        <option value="robbery">Robberies</option>
+        <option value="freeplay">Free-roam</option>
+        <option value="online">Online</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Status</span>
+      <select id="filter-status">
+        <option value="all">Earned + missing</option>
+        <option value="earned">Earned only</option>
+        <option value="missing">Missing only</option>
+      </select>
+    </label>
+    <label class="field toggle">
+      <span>Spoilers</span>
+      <input id="spoiler-toggle" type="checkbox" role="switch">
+      <em id="spoiler-note">Story trophies hidden</em>
+    </label>
+    <div class="field actions">
+      <span>Progress file</span>
+      <div class="btn-row">
+        <button type="button" id="export-btn" class="ghost">Export</button>
+        <label class="ghost file-btn">Import<input id="import-input" type="file" accept="application/json,.json"></label>
+        <button type="button" id="reset-btn" class="ghost danger">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tracker-grid">
+    <div class="list-col">
+      <p class="list-note" id="list-note"></p>
+      <ul class="trophy-list" id="trophy-list"></ul>
+    </div>
+    <aside class="detail-col" id="detail" aria-live="polite">
+      <div class="detail-empty">
+        <h2>Pick a trophy</h2>
+        <p>Its guide, missable warning and cited steps appear here. Every claim names the page it came from.</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<section id="view-roadmap" class="view" hidden>
+  <div class="panel-head">
+    <h2>Road to the platinum</h2>
+    <p id="roadmap-summary"></p>
+  </div>
+  <ol class="roadmap" id="roadmap"></ol>
+</section>
+
+<section id="view-sources" class="view" hidden>
+  <div class="panel-head">
+    <h2>Source matrix</h2>
+    <p id="sources-summary"></p>
+  </div>
+  <div class="source-list" id="source-list"></div>
+  <div class="matrix-wrap">
+    <table class="matrix" id="matrix">
+      <thead><tr><th scope="col">Trophy</th><th scope="col">Steps</th><th scope="col">Sources</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  <p>Fan-made tracker. Trophy names and descriptions belong to PlayStation and Rockstar Games; every guide line here is written for this guide and cites its page.</p>
+  <p>No network calls at run time. Progress lives in this browser's localStorage; export a JSON file to move it.</p>
+</footer>
+
+<script type="module" src="modules/main.js"></script>
+</body>
+</html>
