@@ -1,6 +1,26 @@
 [
-  { "file": "1-tracker.jpg", "view": "tracker", "note": "Checklist with one trophy earned (the platinum), the detail panel open on a cited guide, progress bar and filters in view.", "viewport": { "width": 1280, "height": 800 } },
-  { "file": "2-roadmap.jpg", "view": "roadmap", "note": "Roadmap view: eight stages to the platinum with the missable trophy flagged and per-stage sources.", "viewport": { "width": 1280, "height": 800 } },
-  { "file": "3-spoiler.jpg", "view": "tracker+spoilers", "note": "Spoiler setting on: unearned story trophies show as hidden rows with no name or description.", "viewport": { "width": 1280, "height": 800 } },
-  { "file": "4-sources.jpg", "view": "sources", "note": "Sources view: citation totals per page and the trophy-by-source matrix.", "viewport": { "width": 1280, "height": 800 } }
+  {
+    "file": "1-tracker.jpg",
+    "view": "checklist",
+    "note": "Checklist with the platinum marked earned, the detail panel open on a trophy with cited steps, the progress bar and the filter console in view.",
+    "viewport": { "width": 1280, "height": 800 }
+  },
+  {
+    "file": "2-roadmap.jpg",
+    "view": "route",
+    "note": "The eight-stage route to the platinum, with the single missable trophy flagged on its stage chip.",
+    "viewport": { "width": 1280, "height": 800 }
+  },
+  {
+    "file": "3-spoiler.jpg",
+    "view": "checklist&mask=on",
+    "note": "Spoiler mask on: unearned story trophies appear as hidden rows with no name or description.",
+    "viewport": { "width": 1280, "height": 800 }
+  },
+  {
+    "file": "4-sources.jpg",
+    "view": "citations",
+    "note": "Citations scene: per-page citation counts and the trophy-by-source matrix.",
+    "viewport": { "width": 1280, "height": 800 }
+  }
 ]

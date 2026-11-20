@@ -1,420 +1,336 @@
-// guide.js — the read-only half of the app: the trophy list with its filters, the detail panel with per-step
-// citations, the roadmap view and the source matrix. It renders; it never decides what is earned.
+/* guide.js — pure presentation. Every view is rebuilt from view.data + view.marked; no handler lives
+   in this file, so a re-render never loses state. */
 
-import { state, isEarned, countsByGrade } from './store.js';
+import { view, holds, tallyByGrade, earnedCount } from './store.js';
 
-const GRADE_ORDER = ['platinum', 'gold', 'silver', 'bronze'];
-const KIND_LABEL = {
+const FAMILY = {
   story: 'Story',
-  collectible: 'Collectibles',
-  activity: 'Activities',
-  stranger: 'Strangers & Freaks',
-  robbery: 'Robberies',
-  freeplay: 'Free-roam',
-  online: 'Online',
+  collectible: 'Collectible',
+  activity: 'Activity',
+  stranger: 'Stranger',
+  robbery: 'Robbery',
+  freeplay: 'Free roam',
 };
+const GRADES = ['platinum', 'gold', 'silver', 'bronze'];
+const el = (id) => document.getElementById(id);
 
-const byId = (id) => document.getElementById(id);
+export const familyName = (kind) => FAMILY[kind] ?? kind;
+export const pageOf = (data) => new Map(data.sources.map((s) => [s.id, s]));
+export const pagesOf = (trophy) => [...new Set(trophy.steps.flatMap((s) => s.srcs))];
+export const masked = (trophy) => view.mask && trophy.kind === 'story' && !holds(trophy);
 
-export function sourceMap(doc) {
-  return new Map(doc.sources.map((s) => [s.id, s]));
+function node(tag, className, text) {
+  const n = document.createElement(tag);
+  if (className) n.className = className;
+  if (text !== undefined) n.textContent = text;
+  return n;
 }
 
-export function stepSources(trophy) {
-  return [...new Set(trophy.steps.flatMap((s) => s.srcs))];
+function anchor(source) {
+  const a = node('a', 'src', source.name.split(' — ')[0]);
+  a.href = source.url;
+  a.target = '_blank';
+  a.rel = 'noreferrer noopener';
+  a.referrerPolicy = 'no-referrer';
+  a.title = `${source.name} · ${source.url}`;
+  return a;
 }
 
-export function isHiddenBySpoilers(trophy) {
-  return state.spoilersOn && trophy.kind === 'story' && !isEarned(trophy);
+function sourceStrip(ids, lookup) {
+  const box = node('span', 'srcs');
+  for (const id of ids) {
+    const page = lookup.get(id);
+    if (page) box.append(anchor(page));
+  }
+  return box;
 }
 
-export function visibleTrophies() {
-  const f = state.filters;
-  const text = f.text.trim().toLowerCase();
-  return state.doc.trophies.filter((t) => {
-    if (f.grade !== 'all' && t.grade !== f.grade) return false;
-    if (f.kind !== 'all' && t.kind !== f.kind) return false;
-    if (f.status === 'earned' && !isEarned(t)) return false;
-    if (f.status === 'missing' && isEarned(t)) return false;
-    if (!text) return true;
-    const hay = [t.name, t.description, t.guide, KIND_LABEL[t.kind] ?? t.kind, t.stage].join(' ').toLowerCase();
-    return hay.includes(text);
-  });
+/* ---------- header ---------- */
+
+export function paintCounters(data) {
+  const steps = data.trophies.reduce((n, t) => n + t.steps.length, 0);
+  const links = data.trophies.reduce((n, t) => n + t.steps.reduce((m, s) => m + s.srcs.length, 0), 0);
+  el('c-trophies').textContent = String(data.trophies.length);
+  el('c-steps').textContent = String(steps);
+  el('c-steps').title = `${links} source links spread over ${steps} steps`;
+  el('c-sources').textContent = String(data.sources.length);
+  el('c-earned').textContent = String(earnedCount(data));
 }
 
-export function renderHeaderStats(doc) {
-  const steps = doc.trophies.reduce((n, t) => n + t.steps.length, 0);
-  const links = doc.trophies.reduce((n, t) => n + t.steps.reduce((m, s) => m + s.srcs.length, 0), 0);
-  byId('stat-trophies').textContent = String(doc.trophies.length);
-  byId('stat-cited').textContent = `${steps}`;
-  byId('stat-cited').title = `${links} source links across ${steps} steps`;
-  byId('stat-sources').textContent = String(doc.sources.length);
-  byId('stat-earned').textContent = String(doc.trophies.filter(isEarned).length);
-}
+/* ---------- meter and tallies ---------- */
 
-export function renderProgress(doc) {
-  const total = doc.trophies.length;
-  const done = doc.trophies.filter(isEarned).length;
+export function paintMeter(data) {
+  const total = data.trophies.length;
+  const done = earnedCount(data);
   const pct = total ? Math.round((done / total) * 100) : 0;
-  byId('progress-line').innerHTML = `<b>${done}</b> of ${total} earned`;
-  byId('progress-pct').textContent = `${pct}%`;
-  byId('progress-fill').style.width = `${pct}%`;
-  const { base, earned } = countsByGrade(doc);
-  const list = byId('grade-counts');
+  el('earned-count').textContent = String(done);
+  el('total-count').textContent = String(total);
+  el('earned-pct').textContent = `${pct}%`;
+  el('meter-fill').style.width = `${pct}%`;
+  const bar = el('meter-bar');
+  bar.setAttribute('aria-valuenow', String(done));
+  bar.setAttribute('aria-valuemax', String(total));
+
+  const rows = tallyByGrade(data);
+  const list = el('tally');
   list.replaceChildren();
-  for (const grade of GRADE_ORDER) {
-    const li = document.createElement('li');
-    li.innerHTML = `<b>${earned[grade]}</b>/${base[grade]} ${grade}`;
+  for (const grade of GRADES) {
+    const [got, all] = rows[grade] ?? [0, 0];
+    const li = node('li');
+    li.append(node('b', null, String(got)), document.createTextNode(`/${all} ${grade}`));
     list.append(li);
   }
-  const missables = doc.trophies.filter((t) => t.missable).length;
-  const li = document.createElement('li');
-  li.innerHTML = `<b>${missables}</b> missable`;
+  const lost = data.trophies.filter((t) => t.missable);
+  const li = node('li', 'alarm');
+  li.append(node('b', null, String(lost.length)), document.createTextNode(' missable'));
+  li.title = lost.map((t) => t.name).join(', ');
   list.append(li);
-  byId('stat-earned').textContent = String(done);
+  el('c-earned').textContent = String(done);
 }
 
-export function renderList() {
-  const list = byId('trophy-list');
-  const rows = visibleTrophies();
+/* ---------- checklist rows ---------- */
+
+function passesFilters(trophy) {
+  const q = view.query;
+  if (q.grade !== 'any' && trophy.grade !== q.grade) return false;
+  if (q.family !== 'any' && trophy.kind !== q.family) return false;
+  if (q.state === 'earned' && !holds(trophy)) return false;
+  if (q.state === 'missing' && holds(trophy)) return false;
+  const needle = q.text.trim().toLowerCase();
+  if (!needle) return true;
+  return [trophy.name, trophy.description, trophy.guide, familyName(trophy.kind), trophy.stage]
+    .join(' ')
+    .toLowerCase()
+    .includes(needle);
+}
+
+export function paintRows() {
+  const data = view.data;
+  const list = el('rows');
+  const shown = data.trophies.filter(passesFilters);
   list.replaceChildren();
-  byId('list-note').textContent = `${rows.length} of ${state.doc.trophies.length} trophies shown${state.spoilersOn ? ' · story names hidden until earned' : ''}`;
-  if (!rows.length) {
-    const li = document.createElement('li');
-    li.className = 'empty-note';
-    li.textContent = 'Nothing matches these filters. Loosen one to see trophies again.';
-    list.append(li);
+  el('list-note').textContent = `${shown.length} of ${data.trophies.length} shown${view.mask ? ' · story names stay covered until earned' : ''}`;
+
+  if (!shown.length) {
+    list.append(node('li', 'empty', 'Nothing fits those filters. Widen one and the list fills again.'));
     return;
   }
-  const frag = document.createDocumentFragment();
-  for (const t of rows) {
-    const li = document.createElement('li');
-    const row = document.createElement('div');
-    row.className = 'trophy-row';
-    if (isEarned(t)) row.classList.add('earned');
-    if (state.selected === t.name) row.classList.add('selected');
+
+  const bag = document.createDocumentFragment();
+  for (const t of shown) {
+    const li = node('li');
+    const row = node('div', 'row');
+    if (holds(t)) row.classList.add('done');
+    if (view.open === t.name) row.classList.add('picked');
     row.dataset.name = t.name;
     row.tabIndex = 0;
     row.setAttribute('role', 'button');
 
-    const box = document.createElement('input');
+    const box = node('input');
     box.type = 'checkbox';
-    box.checked = isEarned(t);
-    box.dataset.action = 'toggle';
-    box.setAttribute('aria-label', `Mark ${t.name} earned`);
+    box.checked = holds(t);
+    box.dataset.role = 'toggle';
+    box.setAttribute('aria-label', `Mark ${masked(t) ? 'this story trophy' : t.name} as earned`);
     row.append(box);
 
-    const badge = document.createElement('span');
-    badge.className = `badge ${t.grade}`;
-    badge.textContent = t.grade[0].toUpperCase();
-    badge.title = `${t.grade} · ${KIND_LABEL[t.kind] ?? t.kind}`;
-    row.append(badge);
+    row.append(node('span', `badge ${t.grade}`, t.grade[0].toUpperCase()));
 
-    const text = document.createElement('span');
-    const name = document.createElement('span');
-    name.className = 't-name';
-    name.textContent = isHiddenBySpoilers(t) ? 'Hidden story trophy' : t.name;
-    const sub = document.createElement('span');
-    sub.className = 't-sub';
-    sub.textContent = isHiddenBySpoilers(t)
-      ? 'Turn spoilers off to read its name and description'
-      : `${KIND_LABEL[t.kind] ?? t.kind} · ${t.steps.length} cited steps`;
-    text.append(name, sub);
-    row.append(text);
+    const stack = node('span');
+    stack.append(node('span', 't-name', masked(t) ? 'Hidden story trophy' : t.name));
+    stack.append(
+      node(
+        'span',
+        't-sub',
+        masked(t) ? 'Turn the spoiler mask off to read it' : `${familyName(t.kind)} · ${t.steps.length} cited steps`,
+      ),
+    );
+    row.append(stack);
 
-    const pips = document.createElement('span');
-    pips.className = 'pips';
-    pips.setAttribute('aria-hidden', 'true');
-    if (t.missable) {
-      const m = document.createElement('span');
-      m.className = 'badge missable';
-      m.textContent = 'missable';
-      pips.append(m);
-    } else {
-      const off = t.steps.filter((s) => s.srcs.length === 0).length;
-      for (let i = 0; i < Math.min(3, t.steps.length); i += 1) {
-        const pip = document.createElement('span');
-        pip.className = off > i ? 'pip' : 'pip on';
-        pips.append(pip);
-      }
-    }
-    row.append(pips);
+    row.append(node('span', 'mark', t.missable ? '⚑' : ''));
     li.append(row);
-    frag.append(li);
+    bag.append(li);
   }
-  list.append(frag);
+  list.append(bag);
 }
 
-function srcLinks(ids, sources) {
-  const wrap = document.createElement('span');
-  wrap.className = 'step-srcs';
-  for (const id of ids) {
-    const s = sources.get(id);
-    if (!s) continue;
-    const a = document.createElement('a');
-    a.className = 'src';
-    a.href = s.url;
-    a.rel = 'noreferrer noopener';
-    a.referrerPolicy = 'no-referrer';
-    a.target = '_blank';
-    a.textContent = s.name.replace(/ — .*/, '');
-    a.title = s.url;
-    wrap.append(a);
-  }
-  return wrap;
-}
+/* ---------- detail panel ---------- */
 
-export function renderDetail() {
-  const panel = byId('detail');
-  const doc = state.doc;
-  const sources = sourceMap(doc);
-  const t = doc.trophies.find((x) => x.name === state.selected);
+export function paintDetail() {
+  const data = view.data;
+  const panel = el('detail');
+  const lookup = pageOf(data);
+  const t = data.trophies.find((x) => x.name === view.open);
   panel.replaceChildren();
   if (!t) {
-    const empty = document.createElement('div');
-    empty.className = 'detail-empty';
-    empty.innerHTML = '<h2>Pick a trophy</h2><p>Its guide, missable warning and cited steps appear here. Every claim names the page it came from.</p>';
-    panel.append(empty);
+    const box = node('div', 'placeholder');
+    box.append(node('h2', null, 'Choose a trophy'));
+    box.append(node('p', null, 'The guide, the missable warning and the sources for each step show up in this column.'));
+    panel.append(box);
     return;
   }
-  const head = document.createElement('div');
-  head.className = 'detail-head';
-  const grade = document.createElement('span');
-  grade.className = `badge ${t.grade}`;
-  grade.textContent = t.grade;
-  head.append(grade);
-  const kind = document.createElement('span');
-  kind.className = 'badge hidden';
-  kind.textContent = KIND_LABEL[t.kind] ?? t.kind;
-  head.append(kind);
-  if (t.missable) {
-    const m = document.createElement('span');
-    m.className = 'badge missable';
-    m.textContent = 'missable';
-    head.append(m);
-  }
-  if (t.hidden) {
-    const h = document.createElement('span');
-    h.className = 'badge hidden';
-    h.textContent = 'hidden on PSN';
-    head.append(h);
-  }
-  const title = document.createElement('h2');
-  title.textContent = isHiddenBySpoilers(t) ? 'Hidden story trophy' : t.name;
-  head.append(title);
+
+  const head = node('div', 'd-head');
+  head.append(node('span', `badge ${t.grade}`, t.grade));
+  head.append(node('span', 'badge tag', familyName(t.kind)));
+  if (t.missable) head.append(node('span', 'badge missable', 'missable'));
+  if (t.hidden) head.append(node('span', 'badge hush', 'hidden on PSN'));
+  head.append(node('h2', null, masked(t) ? 'Hidden story trophy' : t.name));
   panel.append(head);
 
-  const desc = document.createElement('p');
-  desc.className = 'detail-desc';
-  desc.textContent = isHiddenBySpoilers(t) ? 'Description hidden by the spoiler setting.' : t.description;
-  panel.append(desc);
+  panel.append(node('p', 'd-desc', masked(t) ? 'The spoiler mask is covering this description.' : t.description));
 
-  const meta = document.createElement('ul');
-  meta.className = 'detail-meta';
-  const stage = doc.stages.find((s) => s.id === t.stage);
-  for (const line of [stage ? `Stage: ${stage.title}` : 'Stage: free-roam', `${t.steps.length} cited steps`, `${stepSources(t).length} sources`]) {
-    const li = document.createElement('li');
-    li.textContent = line;
-    meta.append(li);
+  const stage = data.stages.find((s) => s.id === t.stage);
+  const facts = node('ul', 'd-facts');
+  for (const [label, value] of [
+    ['Stage', stage ? stage.title : t.stage],
+    ['Steps', String(t.steps.length)],
+    ['Pages', String(pagesOf(t).length)],
+  ]) {
+    const li = node('li');
+    li.append(node('b', null, `${label}: `), document.createTextNode(value));
+    facts.append(li);
   }
-  panel.append(meta);
+  panel.append(facts);
 
-  if (!isHiddenBySpoilers(t)) {
-    const guide = document.createElement('p');
-    guide.className = 'detail-guide';
-    guide.textContent = t.guide;
-    panel.append(guide);
-
+  if (!masked(t)) {
+    panel.append(node('p', 'd-guide', t.guide));
     if (t.missable) {
-      const warn = document.createElement('p');
-      warn.className = 'warn';
-      warn.textContent = 'Missable: this trophy has a step that can be lost for good. Read the first step before you move on to the next chapter.';
+      const warn = node('p', 'alarm-box');
+      warn.append(node('strong', null, 'Missable. '));
+      warn.append(
+        document.createTextNode('One of these steps can be lost for good once the chapter moves on. Read it before you leave the area.'),
+      );
       panel.append(warn);
     }
-
-    const stepsTitle = document.createElement('h3');
-    stepsTitle.className = 'steps-title';
-    stepsTitle.textContent = 'How to get it, with sources';
-    panel.append(stepsTitle);
-
-    const ol = document.createElement('ol');
-    ol.className = 'steps';
-    t.steps.forEach((step, i) => {
-      const li = document.createElement('li');
-      const p = document.createElement('p');
-      p.className = 'step-text';
-      p.textContent = `${i + 1}. ${step.text}`;
-      li.append(p, srcLinks(step.srcs, sources));
+    panel.append(node('p', 'd-sub', 'How to earn it'));
+    const ol = node('ol', 'steps');
+    t.steps.forEach((step) => {
+      const li = node('li');
+      li.append(node('p', 'step-text', step.text));
+      li.append(sourceStrip(step.srcs, lookup));
       ol.append(li);
     });
     panel.append(ol);
   }
 
-  const actions = document.createElement('div');
-  actions.className = 'trophy-actions';
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = isEarned(t) ? 'earn on' : 'earn';
-  btn.dataset.action = 'detail-toggle';
-  btn.textContent = isEarned(t) ? 'Earned — undo' : 'Mark earned';
-  actions.append(btn);
+  const actions = node('div', 'd-actions');
+  const button = node('button', holds(t) ? 'earn-btn on' : 'earn-btn', holds(t) ? 'Earned — undo' : 'Mark earned');
+  button.type = 'button';
+  button.dataset.role = 'detail-flip';
+  actions.append(button);
   panel.append(actions);
 }
 
-export function renderRoadmap() {
-  const doc = state.doc;
-  const ol = byId('roadmap');
-  ol.replaceChildren();
-  const total = doc.trophies.length;
-  const done = doc.trophies.filter(isEarned).length;
-  const missables = doc.trophies.filter((t) => t.missable);
-  byId('roadmap-summary').textContent =
-    `${total} trophies in ${doc.stages.length} stages. ${done} earned. ${missables.length} missable: ${missables.map((t) => t.name).join(', ')}.`;
+/* ---------- route ---------- */
 
-  for (const stage of doc.stages) {
-    const items = doc.trophies.filter((t) => t.stage === stage.id);
-    const doneHere = items.filter(isEarned).length;
-    const li = document.createElement('li');
-    li.className = 'stage';
-    const head = document.createElement('div');
-    head.className = 'stage-head';
-    const h3 = document.createElement('h3');
-    h3.textContent = stage.title;
-    const when = document.createElement('span');
-    when.className = 'stage-when';
-    when.textContent = stage.when;
-    const count = document.createElement('span');
-    count.className = 'stage-count';
-    count.textContent = `${doneHere}/${items.length} earned · ${stage.counts}`;
-    head.append(h3, when, count);
-    li.append(head);
+export function paintRoute() {
+  const data = view.data;
+  const list = el('route');
+  const lost = data.trophies.filter((t) => t.missable);
+  el('route-summary').textContent =
+    `${data.trophies.length} trophies across ${data.stages.length} stages · ${earnedCount(data)} earned · ` +
+    `${lost.length} missable (${lost.map((t) => t.name).join(', ')}). Chips jump back to the checklist with the trophy open.`;
+  list.replaceChildren();
+  const lookup = pageOf(data);
 
-    const body = document.createElement('p');
-    body.className = 'stage-body';
-    body.textContent = stage.body;
-    li.append(body);
+  for (const stage of data.stages) {
+    const items = data.trophies.filter((t) => t.stage === stage.id);
+    const done = items.filter(holds).length;
+    const li = node('li', 'stage');
+    if (items.some((t) => t.missable)) li.classList.add('has-missable');
 
-    const srcLine = document.createElement('p');
-    srcLine.className = 'step-srcs';
-    const sources = sourceMap(doc);
+    const top = node('div', 's-top');
+    top.append(node('h3', null, stage.title));
+    top.append(node('span', 's-when', stage.when));
+    top.append(node('span', 's-tally', `${done}/${items.length} earned · ${stage.counts}`));
+    li.append(top);
+    li.append(node('p', 's-body', stage.body));
+
+    const strip = node('p', 's-srcs');
     for (const id of stage.srcs) {
-      const s = sources.get(id);
-      if (!s) continue;
-      const a = document.createElement('a');
-      a.className = 'src';
-      a.href = s.url;
-      a.target = '_blank';
-      a.rel = 'noreferrer noopener';
-      a.referrerPolicy = 'no-referrer';
-      a.textContent = s.name.replace(/ — .*/, '');
-      srcLine.append(a);
+      const page = lookup.get(id);
+      if (page) strip.append(anchor(page));
     }
-    li.append(srcLine);
+    if (strip.childElementCount) li.append(strip);
 
-    const ul = document.createElement('ul');
-    ul.className = 'stage-trophies';
+    const chips = node('ul', 'chips');
     for (const t of items) {
-      const chip = document.createElement('button');
+      const chip = node('button', 'chip', t.name);
       chip.type = 'button';
-      chip.className = 'chip';
-      if (isEarned(t)) chip.classList.add('done');
-      if (t.missable) chip.classList.add('missable');
-      chip.dataset.goto = t.name;
-      chip.title = t.missable ? `${t.name} — missable` : t.name;
-      chip.textContent = t.missable ? `${t.name} ⚑` : t.name;
-      ul.append(chip);
+      chip.dataset.jump = t.name;
+      if (holds(t)) chip.classList.add('done');
+      if (t.missable) {
+        chip.classList.add('missable');
+        chip.title = `${t.name} — missable, read the steps before the chapter ends`;
+      }
+      chips.append(chip);
     }
-    if (!items.length) {
-      const chip = document.createElement('span');
-      chip.className = 'chip';
-      chip.textContent = 'no trophies pinned here';
-      ul.append(chip);
-    }
-    li.append(ul);
-    ol.append(li);
+    if (!items.length) chips.append(node('span', 'chip', 'nothing pinned to this stage'));
+    li.append(chips);
+    list.append(li);
   }
 }
 
-export function renderSources() {
-  const doc = state.doc;
-  const list = byId('source-list');
-  const sources = sourceMap(doc);
-  const usage = new Map(doc.sources.map((s) => [s.id, { trophies: new Set(), steps: 0 }]));
+/* ---------- citations ---------- */
+
+export function paintCitations() {
+  const data = view.data;
+  const lookup = pageOf(data);
+  const usage = new Map(data.sources.map((s) => [s.id, { steps: 0, trophies: new Set() }]));
   let links = 0;
-  let multi = 0;
-  for (const t of doc.trophies) {
-    const ids = stepSources(t);
-    if (ids.length >= 2) multi += 1;
-    for (const s of t.steps) {
-      for (const id of s.srcs) {
-        usage.get(id).steps += 1;
-        usage.get(id).trophies.add(t.name);
+  let twoPlus = 0;
+  for (const t of data.trophies) {
+    if (pagesOf(t).length > 1) twoPlus += 1;
+    for (const step of t.steps) {
+      for (const id of step.srcs) {
+        const slot = usage.get(id);
+        if (!slot) continue;
+        slot.steps += 1;
+        slot.trophies.add(t.name);
         links += 1;
       }
     }
   }
-  const steps = doc.trophies.reduce((n, t) => n + t.steps.length, 0);
-  byId('sources-summary').textContent =
-    `${doc.trophies.length} trophies · ${steps} cited steps · ${links} source links · ${doc.sources.length} sources · ${multi} trophies backed by two or more. Names, descriptions and grades come from the official PlayStation list; every step names the page it was checked against.`;
+  const steps = data.trophies.reduce((n, t) => n + t.steps.length, 0);
+  el('cite-summary').textContent =
+    `${data.trophies.length} trophies · ${steps} steps · ${links} citations · ${data.sources.length} pages · ` +
+    `${twoPlus} trophies rest on more than one page. Names, descriptions and grades come from the PlayStation list; every route note names where it was checked.`;
 
-  list.replaceChildren();
-  for (const s of doc.sources) {
-    const card = document.createElement('div');
-    card.className = 'source-card';
-    const h3 = document.createElement('h3');
-    h3.textContent = s.name;
-    const url = document.createElement('a');
-    url.className = 'src-url';
-    url.href = s.url;
-    url.target = '_blank';
-    url.rel = 'noreferrer noopener';
-    url.referrerPolicy = 'no-referrer';
-    url.textContent = s.url;
-    const meta = document.createElement('p');
-    meta.className = 'src-meta';
-    const u = usage.get(s.id);
-    meta.textContent = `${u.steps} citations across ${u.trophies.size} trophies. ${s.note}`;
-    card.append(h3, url, meta);
-    list.append(card);
+  const cards = el('cite-cards');
+  cards.replaceChildren();
+  for (const page of data.sources) {
+    const card = node('div', 'cite');
+    card.append(node('h3', null, page.name));
+    const link = anchor(page);
+    link.textContent = page.url;
+    card.append(link);
+    card.append(node('p', null, page.note));
+    const used = usage.get(page.id);
+    card.append(node('span', 'used', `${used.steps} citations · ${used.trophies.size} trophies`));
+    cards.append(card);
   }
 
-  const tbody = byId('matrix').querySelector('tbody');
-  tbody.replaceChildren();
-  for (const t of doc.trophies) {
-    const tr = document.createElement('tr');
-    const name = document.createElement('td');
-    name.textContent = isHiddenBySpoilers(t) ? 'Hidden story trophy' : t.name;
-    const stepsTd = document.createElement('td');
-    stepsTd.className = 'num';
-    stepsTd.textContent = String(t.steps.length);
-    const srcTd = document.createElement('td');
-    const ids = stepSources(t);
-    if (ids.length) {
-      for (const id of ids) {
-        const s = sources.get(id);
-        if (!s) continue;
-        const a = document.createElement('a');
-        a.className = 'src';
-        a.href = s.url;
-        a.target = '_blank';
-        a.rel = 'noreferrer noopener';
-        a.referrerPolicy = 'no-referrer';
-        a.textContent = s.name.split(' — ')[0];
-        srcTd.append(a);
-      }
-    } else {
-      srcTd.textContent = 'official description only';
+  const body = el('matrix').querySelector('tbody');
+  body.replaceChildren();
+  for (const t of data.trophies) {
+    const tr = node('tr');
+    tr.append(node('td', null, masked(t) ? 'Hidden story trophy' : t.name));
+    tr.append(node('td', 'num', String(t.steps.length)));
+    const pages = node('td', 'pages');
+    for (const id of pagesOf(t)) {
+      const page = lookup.get(id);
+      if (page) pages.append(anchor(page));
     }
-    tr.append(name, stepsTd, srcTd);
-    tbody.append(tr);
+    tr.append(pages);
+    body.append(tr);
   }
 }
 
-export function renderAll() {
-  renderHeaderStats(state.doc);
-  renderProgress(state.doc);
-  renderList();
-  renderDetail();
-  renderRoadmap();
-  renderSources();
+export function repaint() {
+  paintCounters(view.data);
+  paintMeter(view.data);
+  paintRows();
+  paintDetail();
+  paintRoute();
+  paintCitations();
 }

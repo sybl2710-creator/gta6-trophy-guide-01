@@ -1,174 +1,175 @@
-// main.js — wiring only: load the data once, hand the views their data, and route every click, key and
-// input to the store. Views re-render from state; nothing here knows how a trophy is drawn.
+/* main.js — wiring. Boots the data, keeps the tab state on the URL, and forwards every click, key press
+   and form change to the store before repainting. */
 
-import * as store from './store.js';
-import * as guide from './guide.js';
+import { view, restore, holds, mark, flip, setMask, wipe, saveFile, loadFile } from './store.js';
+import { repaint, paintRows, paintDetail, masked } from './guide.js';
 
-const DOC_URL = new URL('../data/trophies.json', import.meta.url);
-const VIEWS = ['tracker', 'roadmap', 'sources'];
-let currentView = 'tracker';
+const DATA_URL = new URL('../data/trophies.json', import.meta.url);
+const MODES = ['checklist', 'route', 'citations'];
 
-function refresh() {
-  guide.renderAll();
+const byId = (id) => document.getElementById(id);
+
+function readUrl() {
+  const params = new URLSearchParams(location.search);
+  const mode = params.get('mode');
+  if (MODES.includes(mode)) showMode(mode);
+  const mask = params.get('mask');
+  if (mask === 'off') setMask(false);
+  if (mask === 'on') setMask(true);
+  const open = params.get('open');
+  if (open && view.data.trophies.some((t) => t.name === open)) view.open = open;
 }
 
-function switchView(name) {
-  if (!VIEWS.includes(name)) return;
-  currentView = name;
-  for (const button of document.querySelectorAll('#tabs button')) {
-    const active = button.dataset.view === name;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-selected', active ? 'true' : 'false');
+export function showMode(mode) {
+  for (const button of byId('switch').querySelectorAll('button[data-mode]')) {
+    const on = button.dataset.mode === mode;
+    button.setAttribute('aria-selected', on ? 'true' : 'false');
   }
-  for (const view of VIEWS) {
-    const section = document.getElementById(`view-${view}`);
-    if (section) section.hidden = view !== name;
+  for (const name of MODES) {
+    const scene = byId(`scene-${name}`);
+    if (scene) scene.hidden = name !== mode;
   }
-  if (name === 'roadmap') guide.renderRoadmap();
-  if (name === 'sources') guide.renderSources();
-}
-
-function selectTrophy(name, scroll) {
-  store.state.selected = name;
-  guide.renderList();
-  guide.renderDetail();
-  if (scroll) {
-    const panel = document.getElementById('detail');
-    if (panel && window.matchMedia('(max-width: 980px)').matches) {
-      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+  try {
+    history.replaceState(null, '', `?mode=${mode}`);
+  } catch {
+    /* file:// in some browsers refuses history writes; the view still switches */
   }
 }
 
-function bindFilters() {
-  const text = document.getElementById('filter-text');
-  const grade = document.getElementById('filter-grade');
-  const kind = document.getElementById('filter-kind');
-  const status = document.getElementById('filter-status');
+function pick(name, scroll) {
+  view.open = name;
+  paintRows();
+  paintDetail();
+  if (scroll && byId('detail').scrollIntoView) {
+    byId('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function paintMaskLabels() {
+  byId('q-mask').checked = view.mask;
+  byId('mask-state').textContent = view.mask ? 'On' : 'Off';
+}
+
+function wireSwitch() {
+  byId('switch').addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-mode]');
+    if (button) showMode(button.dataset.mode);
+  });
+}
+
+function wireConsole() {
+  const text = byId('q-text');
+  const grade = byId('q-grade');
+  const family = byId('q-family');
+  const statePick = byId('q-state');
+
   text.addEventListener('input', () => {
-    store.state.filters.text = text.value;
-    guide.renderList();
+    view.query.text = text.value;
+    paintRows();
   });
-  grade.addEventListener('change', () => {
-    store.state.filters.grade = grade.value;
-    guide.renderList();
-  });
-  kind.addEventListener('change', () => {
-    store.state.filters.kind = kind.value;
-    guide.renderList();
-  });
-  status.addEventListener('change', () => {
-    store.state.filters.status = status.value;
-    guide.renderList();
-  });
-}
-
-function bindSpoilers() {
-  const toggle = document.getElementById('spoiler-toggle');
-  const note = document.getElementById('spoiler-note');
-  const paint = () => {
-    toggle.checked = store.state.spoilersOn;
-    note.textContent = store.state.spoilersOn ? 'Story trophies hidden' : 'Spoilers visible';
+  const copy = (key) => (event) => {
+    view.query[key] = event.target.value;
+    paintRows();
   };
-  paint();
-  toggle.addEventListener('change', () => {
-    store.setSpoilers(toggle.checked);
-    paint();
-    refresh();
+  grade.addEventListener('change', copy('grade'));
+  family.addEventListener('change', copy('family'));
+  statePick.addEventListener('change', copy('state'));
+
+  byId('q-mask').addEventListener('change', (event) => {
+    setMask(event.target.checked);
+    paintMaskLabels();
+    repaint();
   });
 }
 
-function bindProgressFile() {
-  const importInput = document.getElementById('import-input');
-  document.getElementById('export-btn').addEventListener('click', () => store.downloadProgress());
+function wireProgress() {
+  const importInput = byId('import');
+  byId('export').addEventListener('click', () => saveFile(view.data));
   importInput.addEventListener('change', async () => {
     const file = importInput.files?.[0];
     if (!file) return;
     try {
-      const result = await store.readProgressFile(file);
-      refresh();
-      document.getElementById('list-note').textContent =
-        `Imported ${result.accepted} earned trophies${result.rejected ? `, skipped ${result.rejected} unknown` : ''}.`;
+      const result = await loadFile(view.data, file);
+      repaint();
+      byId('list-note').textContent = `Loaded ${result.kept} earned trophies${result.dropped ? `, ignored ${result.dropped} unknown name(s)` : ''}.`;
     } catch (error) {
-      document.getElementById('list-note').textContent = `Import failed: ${error.message}`;
+      byId('list-note').textContent = `Could not read that file: ${error.message}`;
     } finally {
       importInput.value = '';
     }
+    paintMaskLabels();
   });
-  document.getElementById('reset-btn').addEventListener('click', () => {
-    const ok = window.confirm('Clear every earned trophy in this browser? Export first if you want a backup.');
-    if (!ok) return;
-    store.resetProgress();
-    refresh();
+  byId('reset').addEventListener('click', () => {
+    if (!window.confirm('Clear every earned trophy in this browser? Save a JSON copy first if you want one.')) return;
+    wipe();
+    repaint();
+    paintMaskLabels();
   });
 }
 
-function bindList() {
-  const list = document.getElementById('trophy-list');
+function wireRows() {
+  const list = byId('rows');
   list.addEventListener('click', (event) => {
-    const row = event.target.closest('.trophy-row');
+    const row = event.target.closest('.row');
     if (!row) return;
-    const trophy = store.state.doc.trophies.find((t) => t.name === row.dataset.name);
+    const trophy = view.data.trophies.find((t) => t.name === row.dataset.name);
     if (!trophy) return;
-    if (event.target.matches('input[type="checkbox"]')) {
-      store.setEarned(trophy, event.target.checked);
-      refresh();
+    if (event.target.matches('input[data-role="toggle"]')) {
+      mark(trophy, event.target.checked);
+      repaint();
       return;
     }
-    selectTrophy(trophy.name, true);
+    pick(trophy.name, true);
   });
   list.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
-    const row = event.target.closest('.trophy-row');
+    const row = event.target.closest('.row');
     if (!row) return;
     event.preventDefault();
-    selectTrophy(row.dataset.name, true);
+    pick(row.dataset.name, true);
   });
 }
 
-function bindDetail() {
-  document.getElementById('detail').addEventListener('click', (event) => {
-    if (!event.target.matches('[data-action="detail-toggle"]')) return;
-    const trophy = store.state.doc.trophies.find((t) => t.name === store.state.selected);
+function wireDetail() {
+  byId('detail').addEventListener('click', (event) => {
+    if (!event.target.matches('[data-role="detail-flip"]')) return;
+    const trophy = view.data.trophies.find((t) => t.name === view.open);
     if (!trophy) return;
-    store.toggleEarned(trophy);
-    refresh();
+    flip(trophy);
+    repaint();
   });
 }
 
-function bindTabs() {
-  document.getElementById('tabs').addEventListener('click', (event) => {
-    const button = event.target.closest('button[data-view]');
-    if (button) switchView(button.dataset.view);
-  });
-  document.getElementById('roadmap').addEventListener('click', (event) => {
-    const chip = event.target.closest('[data-goto]');
+function wireRoute() {
+  byId('route').addEventListener('click', (event) => {
+    const chip = event.target.closest('[data-jump]');
     if (!chip) return;
-    switchView('tracker');
-    selectTrophy(chip.dataset.goto, true);
+    showMode('checklist');
+    pick(chip.dataset.jump, true);
   });
 }
 
 async function boot() {
   try {
-    const response = await fetch(DOC_URL);
+    const response = await fetch(DATA_URL);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    store.state.doc = await response.json();
+    view.data = await response.json();
   } catch (error) {
-    document.getElementById('detail').textContent = `Could not load the trophy data: ${error.message}`;
+    byId('detail').textContent = `The trophy data could not be loaded: ${error.message}`;
     return;
   }
-  store.loadProgress();
-  const first = store.state.doc.trophies.find((t) => !guide.isHiddenBySpoilers(t));
-  store.state.selected = first ? first.name : null;
-  bindFilters();
-  bindSpoilers();
-  bindProgressFile();
-  bindList();
-  bindDetail();
-  bindTabs();
-  switchView('tracker');
-  refresh();
+  restore();
+  const firstVisible = view.data.trophies.find((t) => !masked(t));
+  if (!view.open) view.open = firstVisible ? firstVisible.name : view.data.trophies[0].name;
+  paintMaskLabels();
+  readUrl();
+  wireSwitch();
+  wireConsole();
+  wireProgress();
+  wireRows();
+  wireDetail();
+  wireRoute();
+  repaint();
 }
 
 boot();

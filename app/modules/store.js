@@ -1,107 +1,109 @@
-// store.js — the one place progress lives: a Set of trophy names, mirrored to localStorage, plus the
-// plain-JSON export/import pair used to move that set between browsers.
+/* store.js — everything that remembers. Keeps the earned set in localStorage, hands out the export file
+   and reads one back. Nothing in here touches the DOM beyond the download click. */
 
-const STORAGE_KEY = 'leonida-ledger.progress.v1';
-const SPOILER_KEY = 'leonida-ledger.spoilers.v1';
+const EARN_KEY = 'fiftysix-stars/earned';
+const MASK_KEY = 'fiftysix-stars/mask';
 
-export const state = {
-  doc: null,
-  earned: new Set(),
-  spoilersOn: true,
-  selected: null,
-  filters: { text: '', grade: 'all', kind: 'all', status: 'all' },
+export const view = {
+  data: null,
+  marked: new Set(),
+  mask: true,
+  open: null,
+  query: { text: '', grade: 'any', family: 'any', state: 'any' },
 };
 
-export function loadProgress() {
+const readJSON = (key) => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const names = raw ? JSON.parse(raw) : [];
-    state.earned = new Set(Array.isArray(names) ? names.filter((n) => typeof n === 'string') : []);
+    return JSON.parse(localStorage.getItem(key) ?? 'null');
   } catch {
-    state.earned = new Set();
+    return null;
   }
-  state.spoilersOn = localStorage.getItem(SPOILER_KEY) !== 'off';
-}
+};
 
-function persist() {
+const writeJSON = (key, value) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...state.earned]));
+    localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    /* private mode or a full quota: the session still works, it just will not outlive the tab */
+    /* storage blocked or full — the tab still works, it just forgets on reload */
   }
+};
+
+export function restore() {
+  const saved = readJSON(EARN_KEY);
+  view.marked = new Set(Array.isArray(saved) ? saved.filter((n) => typeof n === 'string') : []);
+  view.mask = readJSON(MASK_KEY) !== false;
 }
 
-export function isEarned(trophy) {
-  return state.earned.has(trophy.name);
+function commit() {
+  writeJSON(EARN_KEY, [...view.marked]);
 }
 
-export function setEarned(trophy, value) {
-  if (value) state.earned.add(trophy.name);
-  else state.earned.delete(trophy.name);
-  persist();
+export const holds = (trophy) => view.marked.has(trophy.name);
+
+export function mark(trophy, on) {
+  if (on) view.marked.add(trophy.name);
+  else view.marked.delete(trophy.name);
+  commit();
+  return holds(trophy);
 }
 
-export function toggleEarned(trophy) {
-  setEarned(trophy, !isEarned(trophy));
-  return isEarned(trophy);
+export const flip = (trophy) => mark(trophy, !holds(trophy));
+
+export function setMask(on) {
+  view.mask = !!on;
+  writeJSON(MASK_KEY, view.mask);
 }
 
-export function setSpoilers(on) {
-  state.spoilersOn = !!on;
-  localStorage.setItem(SPOILER_KEY, state.spoilersOn ? 'on' : 'off');
-  persist();
+export function wipe() {
+  view.marked.clear();
+  commit();
 }
 
-export function resetProgress() {
-  state.earned.clear();
-  persist();
-}
-
-export function countsByGrade(doc) {
-  const base = { platinum: 0, gold: 0, silver: 0, bronze: 0 };
-  const earned = { platinum: 0, gold: 0, silver: 0, bronze: 0 };
-  for (const t of doc.trophies) {
-    base[t.grade] += 1;
-    if (isEarned(t)) earned[t.grade] += 1;
+export function tallyByGrade(data) {
+  const rows = { platinum: [0, 0], gold: [0, 0], silver: [0, 0], bronze: [0, 0] };
+  for (const t of data.trophies) {
+    const slot = rows[t.grade] ?? (rows[t.grade] = [0, 0]);
+    slot[1] += 1;
+    if (holds(t)) slot[0] += 1;
   }
-  return { base, earned };
+  return rows;
 }
 
-// A trophy's identity for a progress file is its name, so an import survives reordering or added guides.
-export function exportPayload() {
+export const earnedCount = (data) => data.trophies.filter(holds).length;
+
+/* Progress files key on the trophy name, so a file still loads if the list is reordered later. */
+export function buildPayload(data) {
   return {
-    app: 'leonida-ledger',
-    version: 1,
-    game: state.doc?.game ?? 'Grand Theft Auto VI',
-    savedAt: new Date().toISOString(),
-    earned: state.doc ? state.doc.trophies.filter(isEarned).map((t) => t.name) : [...state.earned],
+    tracker: '56-stars',
+    schema: 2,
+    game: data?.game ?? 'Grand Theft Auto VI',
+    exportedAt: new Date().toISOString(),
+    earned: data ? data.trophies.filter(holds).map((t) => t.name) : [...view.marked],
   };
 }
 
-export function importPayload(data) {
-  const names = Array.isArray(data) ? data : data?.earned;
-  if (!Array.isArray(names)) throw new Error('No "earned" array in this file.');
-  const known = new Set((state.doc?.trophies ?? []).map((t) => t.name));
-  const accepted = names.filter((n) => typeof n === 'string' && known.has(n));
-  const rejected = names.length - accepted.length;
-  state.earned = new Set(accepted);
-  persist();
-  return { accepted: accepted.length, rejected };
+export function applyPayload(data, blob) {
+  const names = Array.isArray(blob) ? blob : blob?.earned;
+  if (!Array.isArray(names)) throw new Error('That file has no "earned" list.');
+  const catalogue = new Set((data?.trophies ?? []).map((t) => t.name));
+  const keep = names.filter((n) => typeof n === 'string' && catalogue.has(n));
+  view.marked = new Set(keep);
+  commit();
+  return { kept: keep.length, dropped: names.length - keep.length };
 }
 
-export function downloadProgress() {
-  const blob = new Blob([JSON.stringify(exportPayload(), null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'leonida-ledger-progress.json';
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+export function saveFile(data) {
+  const body = JSON.stringify(buildPayload(data), null, 2);
+  const href = URL.createObjectURL(new Blob([body], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = href;
+  a.download = 'gta6-trophy-progress.json';
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 1500);
 }
 
-export async function readProgressFile(file) {
-  const text = await file.text();
-  return importPayload(JSON.parse(text));
+export async function loadFile(data, file) {
+  return applyPayload(data, JSON.parse(await file.text()));
 }

@@ -1,67 +1,70 @@
-# Leonida Ledger — a GTA VI trophy guide and tracker
+# 56 Stars — a GTA VI trophy checklist and route
 
 [![Build the best GTA 6 trophy guide](https://make.fun/badge/gta6-trophy-guide-01.svg)](https://make.fun/bounty/gta6-trophy-guide-01)
 [![Rank](https://make.fun/badge/gta6-trophy-guide-01/sybl2710-creator/gta6-trophy-guide-01/rank.svg)](https://make.fun/bounty/gta6-trophy-guide-01)
 [![Reward](https://make.fun/badge/gta6-trophy-guide-01/sybl2710-creator/gta6-trophy-guide-01/reward.svg)](https://make.fun/bounty/gta6-trophy-guide-01)
 
-An offline, open-source guide to all 55 PlayStation 5 trophies of **Grand Theft Auto VI** (released 19 November
-2026): a checklist whose progress is saved in the browser, a roadmap to the platinum with the missable flagged, and
-a per-trophy guide that names the page behind every step.
+An offline guide to the 55 PlayStation 5 trophies in **Grand Theft Auto VI**: a checklist that remembers what you
+have earned, an ordered route to the platinum, and a citation under every instruction.
 
-## What is in it
+## The four screens
 
-- **Tracker** — all 55 trophies with official name, description and grade (1 platinum, 2 gold, 6 silver, 46 bronze).
-  Tick one off, and it survives a reload in `localStorage`. Export writes a JSON file; import reads it back and
-  ignores names the list does not hold.
-- **Filters** — free text, grade, kind (story, collectibles, activities, strangers, robberies, free-roam, online) and
-  earned/missing. The game has no online trophies, and the filter says so by staying empty.
-- **Spoiler setting** — on by default: every story trophy you have not earned hides its name and description until
-  you turn it off or mark it earned.
-- **Roadmap** — eight ordered stages from the Prologue to the post-story 100% checklist, each with a short brief,
-  its trophy chips and the pages the stage was built from. The one missable trophy (Positive Mental Attitude) is
-  flagged in the list, the detail panel and the roadmap.
-- **Citations** — 146 steps, each naming at least one source, 181 source links in total across 13 sources. The
-  Sources view lists every page with its citation count and draws a trophy-by-source matrix. Names, descriptions and
-  grades come from the official PlayStation list; anything not confirmable from a public page is said so in the
-  guide rather than guessed.
-- **Fast and quiet** — system fonts only, no images, no external assets, no runtime network calls, three small ES
-  modules, about 40 KB of data.
+- **Checklist** — every trophy with its official name, description and grade (1 platinum, 2 gold, 6 silver,
+  46 bronze). Tick a row and it is stored in `localStorage`. Text search, grade, family and earned/missing filters
+  narrow the list, and a progress bar breaks the total down by grade.
+- **Detail panel** — opens beside the list with the trophy's route notes, its cited steps and a missable warning
+  where one applies. The single missable trophy, *Positive Mental Attitude*, is flagged in the row, the panel and
+  the route.
+- **Route to platinum** — the eight stages in play order, from the prologue to the post-story completion sweep,
+  each with a short brief, its trophies as jump chips and the pages the stage was built from.
+- **Citations** — every source page with its citation count, plus a matrix showing which pages back which trophy.
 
-## Run it
+Spoiler mask is on by default: story trophies you have not earned show neither name nor description until you turn
+it off or mark them earned. Progress moves between browsers as a JSON file (save/load in the filter console).
+
+## Facts behind it
+
+55 trophies, 146 cited steps, 181 citations across 14 pages, 28 of the trophies hidden on PSN, one missable.
+Names, descriptions and grades come from the official PlayStation list; the route notes are written for this
+tracker and each names the page it was checked against.
+
+## Running it
 
 ```sh
-node serve.ts          # serves app/ on http://localhost:8080
+node serve.ts                       # app/ on http://localhost:8080
 ```
 
-Or point any static server at `app/`. There is no build step. To produce the hand-in:
+Any static file server works, and so does opening `app/index.html` directly — there is no build step and the only
+fetch is the page's own `data/trophies.json`. For the hand-in package:
 
 ```sh
 mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 ```
 
-`main.ts` copies `app/` and `screenshots/` to the output directory and writes `dossier.json` with the kit's
-`vendor/makefun-frontend.ts`. Twice in a row, to two directories, the dossier is byte-identical.
+`main.ts` copies `app/` and `screenshots/` into the output folder and writes `dossier.json` through the kit's
+`vendor/makefun-frontend.ts`. Run it twice into separate folders and the two dossiers match byte for byte.
 
-## Layout
+## Files
 
 ```
-app/index.html        shell: header stats, tab bar, three views
-app/style.css         the neon-sunset look, hand-written
-app/modules/store.js  progress state, localStorage, export/import
-app/modules/guide.js  tracker list, detail panel, roadmap, source matrix
-app/modules/main.js   wiring only
-app/data/trophies.json  55 trophies, 8 roadmap stages, 13 cited sources
-main.ts               hand-in program
+app/index.html              page shell: header counters, three scenes
+app/style.css               all styling, system fonts only
+app/modules/store.js        earned set, localStorage, export/import
+app/modules/guide.js        renders each view from state
+app/modules/main.js         event wiring and boot
+app/data/trophies.json      55 trophies, 8 stages, 14 sources
+main.ts                     hand-in program
+shots.json                  description of the four screenshots
 ```
 
 ## Sources
 
-The guide cites, by name and URL: the official PlayStation 5 trophy list, PowerPyx's trophy roadmap and mission
-walkthrough, and nine further PowerPyx reference pages (100% checklist, meditations, bank jobs, gang operations,
-garages, drone races, shooting ranges, strangers & freaks, card sets, challenges, WAiNK scans). Each citation marks a
-page that was actually read, and the notes say which facts came from it. No guide text is copied.
+Official PlayStation 5 trophy list plus thirteen PowerPyx pages: the trophy roadmap, the mission walkthrough, the
+100% checklist, and the location references for meditations, bank jobs, gang operations, garages, drone races,
+shooting ranges, strangers & freaks, card sets, challenges and WAiNK scans. Each is cited by name and URL; no guide
+prose was copied from them.
 
-## License
+## Licence
 
-MIT — see `LICENSE`. Trophy names and descriptions belong to PlayStation and Rockstar Games; this is an unofficial
-fan project and uses no Rockstar artwork or logos.
+MIT — see `LICENSE`. Trophy names and descriptions belong to PlayStation and Rockstar Games. This is an unofficial
+fan project with no Rockstar artwork or logos.

@@ -1,42 +1,52 @@
-// Hand-in program for the GTA 6 trophy guide (competition gta6-trophy-guide-01).
+// Hand-in script for the "Build the best GTA 6 trophy guide" entry (gta6-trophy-guide-01).
 //
-// The entry itself is the plain static site in app/: index.html, style.css, three ES modules under
-// app/modules/ and the trophy data in app/data/trophies.json. There is no build step and nothing is fetched at
-// run time; open app/index.html from any static server and it works with the network off.
-//
-// Running this file copies app/ and screenshots/ into the output directory and writes dossier.json there with
-// the kit's buildDossier, exactly as the scorer will recompute it. Outside the grader, MAKEFUN_OUTPUT_DIR
-// stands in for /output:
+// The entry is the static folder app/: one HTML file, one stylesheet, three ES modules and the trophy
+// data. No bundler, no package install, no request at run time. This script stages that folder and the
+// screenshots next to a dossier.json built by the kit's own buildDossier, which is the same call the
+// grader makes.
 //
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+//
+// Without MAKEFUN_OUTPUT_DIR the script writes to /output, the grader's location.
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-frontend.ts';
 
-const repo = fileURLToPath(new URL('.', import.meta.url));
-const target = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const here = dirname(fileURLToPath(import.meta.url));
+const dest = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-mkdirSync(target, { recursive: true });
+// Limits mirrored from the scorer's gate. Anything over these would be rejected later anyway, so the
+// build fails here instead of shipping something the scorer throws away.
+const TEXT_CEILING = 163_840;
+const SHOT_CEILING = 262_144;
+const SHOT_SLOTS = 4;
+const APP_FILES = 993;
+const APP_BYTES = 50_331_648;
 
-// A rebuild starts from a clean slate so an old app/ or screenshots/ cannot leak into the dossier.
-const stageApp = join(target, 'app');
-const stageShots = join(target, 'screenshots');
-cpSync(join(repo, 'app'), stageApp, { recursive: true, force: true });
-mkdirSync(stageShots, { recursive: true });
-if (existsSync(join(repo, 'screenshots'))) {
-  cpSync(join(repo, 'screenshots'), stageShots, { recursive: true, force: true });
+mkdirSync(dest, { recursive: true });
+
+// Wipe the previous copy so a renamed module cannot survive as a ghost in the output.
+for (const folder of ['app', 'screenshots']) {
+  rmSync(join(dest, folder), { recursive: true, force: true });
 }
 
-// Caps copied from the scorer's gate so this program refuses what the gate would refuse: the text budget, four
-// screenshots of at most 256 KiB, and the file and byte ceilings on app/.
-const dossier = buildDossier(target, {
-  text_max_bytes: 163840,
-  screenshots: { max: 4, max_bytes: 262144 },
-  app_max_files: 993,
-  app_max_bytes: 50331648,
+cpSync(join(here, 'app'), join(dest, 'app'), { recursive: true });
+const shotSource = join(here, 'screenshots');
+if (existsSync(shotSource)) {
+  cpSync(shotSource, join(dest, 'screenshots'), { recursive: true });
+} else {
+  mkdirSync(join(dest, 'screenshots'), { recursive: true });
+}
+
+const dossier = buildDossier(dest, {
+  text_max_bytes: TEXT_CEILING,
+  screenshots: { max: SHOT_SLOTS, max_bytes: SHOT_CEILING },
+  app_max_files: APP_FILES,
+  app_max_bytes: APP_BYTES,
 });
 
-writeFileSync(join(target, 'dossier.json'), dossier);
-console.log(`wrote ${join(target, 'dossier.json')} (${dossier.length} bytes of dossier text)`);
+const target = join(dest, 'dossier.json');
+writeFileSync(target, dossier);
+console.log(`dossier written: ${target} (${dossier.length} bytes)`);
